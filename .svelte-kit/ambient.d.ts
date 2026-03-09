@@ -59,7 +59,6 @@ declare module '$env/static/private' {
 	export const OPENCLAW_LAUNCHD_LABEL: string;
 	export const PATH: string;
 	export const npm_package_json: string;
-	export const npm_config_engine_strict: string;
 	export const _: string;
 	export const BRAVE_API_KEY: string;
 	export const npm_config_userconfig: string;
@@ -195,7 +194,6 @@ declare module '$env/dynamic/private' {
 		OPENCLAW_LAUNCHD_LABEL: string;
 		PATH: string;
 		npm_package_json: string;
-		npm_config_engine_strict: string;
 		_: string;
 		BRAVE_API_KEY: string;
 		npm_config_userconfig: string;
