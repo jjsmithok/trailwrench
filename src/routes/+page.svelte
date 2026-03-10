@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getBikes, saveBike, deleteBike, type Bike } from '$lib/bikes';
   import { BIKE_DATABASE, getAllMakes, searchBikes, getBikeById, type BikeSpec } from '$lib/bikeDatabase';
 
@@ -103,7 +104,7 @@
   }
 
   function startService(bike: Bike) {
-    alert('Service feature coming soon! For now, you can view the service intervals for your bike in the database.');
+    goto('/service?bike=' + bike.id);
   }
 
   function getCategoryBadge(category: string): string {

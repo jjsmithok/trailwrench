@@ -134,7 +134,11 @@
     "src": "src/routes/+page.svelte",
     "isEntry": true,
     "imports": [
-      "_index2.js"
+      "_index2.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js"
     ],
     "css": [
       "_app/immutable/assets/_page.ClnSgTs8.css"
