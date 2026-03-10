@@ -103,7 +103,7 @@
   }
 
   function startService(bike: Bike) {
-    window.location.href = `/trailwrench/service.html?bike=${bike.id}`;
+    alert('Service feature coming soon! For now, you can view the service intervals for your bike in the database.');
   }
 
   function getCategoryBadge(category: string): string {
