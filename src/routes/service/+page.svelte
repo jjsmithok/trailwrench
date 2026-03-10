@@ -35,7 +35,7 @@
     bike = bikes.find(b => b.id === bikeId) || null;
 
     if (!bike) {
-      goto('/');
+      goto('/trailwrench/');
       return;
     }
 
@@ -134,7 +134,7 @@
   }
 
   function goHome() {
-    goto('/');
+    goto('/trailwrench/');
   }
 
   function goToModule(index: number) {
@@ -154,7 +154,7 @@
   function handleDelete() {
     if (bike) {
       deleteBike(bike.id);
-      goto('/');
+      goto('/trailwrench/');
     }
   }
 

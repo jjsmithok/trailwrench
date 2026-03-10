@@ -175,7 +175,7 @@
   }
 
   function startService(bike: Bike) {
-    goto('/service?bike=' + bike.id);
+    goto('/trailwrench/service?bike=' + bike.id);
   }
 
   function getCategoryBadge(category: string): string {
