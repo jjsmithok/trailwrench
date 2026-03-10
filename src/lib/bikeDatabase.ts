@@ -18,7 +18,8 @@ export interface BikeSpec {
       travelMm: number;
       model?: string;
       type: 'air' | 'coil';
-    };
+    } | null;
+    type?: 'hardtail';
   };
   wheelSize: '26' | '27.5' | '29' | 'mullet' | 'mixed';
   frameMaterial: 'aluminum' | 'carbon' | 'titanium';
