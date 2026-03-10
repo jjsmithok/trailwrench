@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { SERVICE_MODULES, type ServiceModule, type ServiceTask } from '$lib/service';
-  import { getBikes, updateBike, getServiceProgress, saveServiceProgress, clearServiceProgress, type Bike } from '$lib/bikes';
+  import { getBikes, updateBike, deleteBike, getServiceProgress, saveServiceProgress, clearServiceProgress, type Bike } from '$lib/bikes';
   import { getBikeById, type BikeSpec, type ServiceInterval } from '$lib/bikeDatabase';
 
   let bikeId = '';
@@ -152,8 +152,7 @@
   }
 
   function handleDelete() {
-    if (bikeToDelete && bike) {
-      const { deleteBike } = require('$lib/bikes');
+    if (bike) {
       deleteBike(bike.id);
       goto('/');
     }

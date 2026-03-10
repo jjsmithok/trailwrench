@@ -254,6 +254,29 @@ export const BIKE_DATABASE: BikeSpec[] = [
     ]
   },
   {
+    id: 'santa-cruz-tallboy',
+    make: 'Santa Cruz',
+    model: 'Tallboy',
+    years: [2024, 2025],
+    category: 'trail',
+    suspension: {
+      fork: { brand: 'Fox', travelMm: 130, model: '36 Float GRIP2' },
+      rear: { brand: 'Fox', travelMm: 127, model: 'DPX2 Factory', type: 'air' }
+    },
+    wheelSize: '29',
+    frameMaterial: 'carbon',
+    serviceIntervals: [
+      { component: 'Fork', task: 'Wipe stanchions after every ride', hours: 0, description: 'Clean with damp cloth, mild soapy water', source: 'Fox Official' },
+      { component: 'Fork', task: 'Lower leg service', hours: 30, description: 'Clean, inspect bushings, repack with suspension butter', source: 'Fox' },
+      { component: 'Rear Shock', task: 'Air sleeve maintenance', hours: 30, description: 'Check air can for oil, service if needed', source: 'Fox' },
+      { component: 'Fork', task: 'Full internal service', hours: 100, description: 'Damper overhaul, replace seals', source: 'Fox' },
+      { component: 'Rear Shock', task: 'DPX2 service', hours: 75, description: 'VPP shock service', source: 'Santa Cruz' },
+      { component: 'Pivot', task: 'Check bearings', hours: 50, description: 'VPP pivot bearings', source: 'Santa Cruz' },
+      { component: 'Drivetrain', task: 'Chain wear check', hours: 15, description: 'Check every 2 weeks, replace at 0.8% stretch', source: 'SRAM' },
+      { component: 'Brakes', task: 'Bleed', hours: 50, description: 'When spongy, use mineral oil', source: 'Shimano' }
+    ]
+  },
+  {
     id: 'santa-cruz-blur',
     make: 'Santa Cruz',
     model: 'Blur',

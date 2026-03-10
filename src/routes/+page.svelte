@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getBikes, saveBike, deleteBike, type Bike } from '$lib/bikes';
+  import { getBikes, saveBike, deleteBike, updateBike, getAllProgress, type Bike } from '$lib/bikes';
   import { BIKE_DATABASE, getAllMakes, searchBikes, getBikeById, type BikeSpec } from '$lib/bikeDatabase';
 
   let bikes: Bike[] = [];
@@ -10,6 +10,10 @@
   let errors = { make: '', model: '' };
   let showDeleteConfirm = false;
   let bikeToDelete: Bike | null = null;
+  
+  // Edit mode
+  let editingBike: Bike | null = null;
+  let editForm = { year: 0, make: '', model: '' };
   
   // Database picker
   let searchQuery = '';
@@ -84,6 +88,73 @@
     selectedDbBike = null;
   }
 
+  // Edit functions
+  function startEdit(bike: Bike) {
+    editingBike = bike;
+    editForm = { year: bike.year, make: bike.make, model: bike.model };
+  }
+
+  function cancelEdit() {
+    editingBike = null;
+    editForm = { year: 0, make: '', model: '' };
+  }
+
+  function saveEdit() {
+    if (!editingBike || !editForm.make.trim() || !editForm.model.trim()) return;
+    
+    const updated = updateBike(editingBike.id, {
+      year: editForm.year,
+      make: editForm.make.trim(),
+      model: editForm.model.trim()
+    });
+    
+    if (updated) {
+      bikes = bikes.map(b => b.id === editingBike!.id ? updated : b);
+    }
+    editingBike = null;
+  }
+
+  // Export/Import functions
+  function exportData() {
+    const data = {
+      bikes: getBikes(),
+      progress: getAllProgress(),
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trailwrench-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (data.bikes && Array.isArray(data.bikes)) {
+          localStorage.setItem('trailwrench_bikes', JSON.stringify(data.bikes));
+          bikes = getBikes();
+        }
+        if (data.progress && Array.isArray(data.progress)) {
+          localStorage.setItem('trailwrench_progress', JSON.stringify(data.progress));
+        }
+        alert('Data imported successfully!');
+      } catch (err) {
+        alert('Failed to import data. Invalid file format.');
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
   function confirmDelete(bike: Bike) {
     bikeToDelete = bike;
     showDeleteConfirm = true;
@@ -138,6 +209,15 @@
   <header>
     <h1>🚵 TrailWrench AI</h1>
     <p>MTB Maintenance Tracker</p>
+    {#if bikes.length > 0}
+      <div class="header-actions">
+        <button class="btn-header" on:click={exportData}>📤 Export</button>
+        <label class="btn-header btn-import">
+          📥 Import
+          <input type="file" accept=".json" on:change={importData} hidden />
+        </label>
+      </div>
+    {/if}
   </header>
 
   {#if bikes.length === 0 && !showAddForm}
@@ -241,18 +321,46 @@
     <section class="bike-list">
       <h2>Your Bikes</h2>
       {#each bikes as bike (bike.id)}
-        <div class="bike-card">
-          <div class="bike-info">
-            <h3>{bike.year} {bike.make} {bike.model}</h3>
-            <p class="hours">
-              {bike.totalServiceHours} service hours
-            </p>
+        {#if editingBike?.id === bike.id}
+          <div class="bike-card edit-card">
+            <div class="edit-form">
+              <div class="form-group">
+                <label>Year</label>
+                <select bind:value={editForm.year}>
+                  {#each years as year}
+                    <option value={year}>{year}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Make</label>
+                <input type="text" bind:value={editForm.make} />
+              </div>
+              <div class="form-group">
+                <label>Model</label>
+                <input type="text" bind:value={editForm.model} />
+              </div>
+              <div class="edit-actions">
+                <button class="btn-secondary" on:click={cancelEdit}>Cancel</button>
+                <button class="btn-primary" on:click={saveEdit}>Save</button>
+              </div>
+            </div>
           </div>
-          <div class="bike-actions">
-            <button class="btn-service" on:click={() => startService(bike)}>Start 50-Hour Service</button>
-            <button class="btn-delete" on:click={() => confirmDelete(bike)} aria-label="Delete bike">🗑️</button>
+        {:else}
+          <div class="bike-card">
+            <div class="bike-info">
+              <h3>{bike.year} {bike.make} {bike.model}</h3>
+              <p class="hours">
+                {bike.totalServiceHours} service hours
+              </p>
+            </div>
+            <div class="bike-actions">
+              <button class="btn-service" on:click={() => startService(bike)}>Start 50-Hour Service</button>
+              <button class="btn-edit" on:click={() => startEdit(bike)} aria-label="Edit bike">✏️</button>
+              <button class="btn-delete" on:click={() => confirmDelete(bike)} aria-label="Delete bike">🗑️</button>
+            </div>
           </div>
-        </div>
+        {/if}
       {/each}
       {#if !showAddForm}
         <button class="btn-add" on:click={() => showAddForm = true}>
@@ -290,6 +398,31 @@
   header p {
     margin: 5px 0 0;
     color: #666;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  .btn-header {
+    padding: 8px 14px;
+    background: #e5e5e5;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: #333;
+  }
+
+  .btn-header:hover {
+    background: #d4d4d4;
+  }
+
+  .btn-import {
+    display: inline-block;
   }
 
   .empty-state {
@@ -552,6 +685,50 @@
 
   .btn-delete:hover {
     background: #fecaca;
+  }
+
+  .btn-edit {
+    background: #fef3c7;
+    color: #d97706;
+    padding: 12px 14px;
+  }
+
+  .btn-edit:hover {
+    background: #fde68a;
+  }
+
+  .edit-card {
+    background: #fffbeb;
+    border: 2px solid #f59e0b;
+  }
+
+  .edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .edit-form .form-group {
+    margin-bottom: 0;
+  }
+
+  .edit-form input,
+  .edit-form select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .edit-actions button {
+    flex: 1;
   }
 
   .btn-add {
