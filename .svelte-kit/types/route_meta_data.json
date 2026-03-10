@@ -4,6 +4,7 @@
 		"src/routes/+layout.ts"
 	],
 	"/service": [
+		"src/routes/service/+page.ts",
 		"src/routes/+layout.ts"
 	]
 }

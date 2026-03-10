@@ -154,5 +154,11 @@
     "css": [
       "_app/immutable/assets/_page.iJr1SmeP.css"
     ]
+  },
+  "src/routes/service/+page.ts": {
+    "file": "entries/pages/service/_page.ts.js",
+    "name": "entries/pages/service/_page.ts",
+    "src": "src/routes/service/+page.ts",
+    "isEntry": true
   }
 }
