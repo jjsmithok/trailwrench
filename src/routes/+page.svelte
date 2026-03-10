@@ -103,7 +103,7 @@
   }
 
   function startService(bike: Bike) {
-    window.location.href = `/service?bike=${bike.id}`;
+    window.location.href = `/service.html?bike=${bike.id}`;
   }
 
   function getCategoryBadge(category: string): string {
