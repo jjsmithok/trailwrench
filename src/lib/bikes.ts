@@ -6,6 +6,7 @@ export interface Bike {
   lastServiceDate: string | null;
   totalServiceHours: number;
   createdAt: string;
+  bikeDbId?: string; // Reference to bike database entry
 }
 
 export interface ServiceLog {

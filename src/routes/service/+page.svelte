@@ -4,9 +4,12 @@
   import { onMount } from 'svelte';
   import { SERVICE_MODULES, type ServiceModule, type ServiceTask } from '$lib/service';
   import { getBikes, updateBike, getServiceProgress, saveServiceProgress, clearServiceProgress, type Bike } from '$lib/bikes';
+  import { getBikeById, type BikeSpec, type ServiceInterval } from '$lib/bikeDatabase';
 
   let bikeId = '';
   let bike: Bike | null = null;
+  let bikeSpec: BikeSpec | null = null;
+  let bikeSpecificTasks: ServiceInterval[] = [];
   let currentModuleIndex = 0;
   let currentTaskIndex = 0;
   let completedModules: string[] = [];
@@ -34,6 +37,14 @@
     if (!bike) {
       goto('/');
       return;
+    }
+
+    // Load bike-specific data from database if available
+    if (bike.bikeDbId) {
+      bikeSpec = getBikeById(bike.bikeDbId) || null;
+      if (bikeSpec) {
+        bikeSpecificTasks = bikeSpec.serviceIntervals;
+      }
     }
 
     // Load saved progress
@@ -191,11 +202,37 @@
       <button class="back-btn" on:click={goHome}>← Back</button>
       <h1>{bike.year} {bike.make} {bike.model}</h1>
       <p class="subtitle">50-Hour Service</p>
+      
+      {#if bikeSpec}
+        <div class="bike-specs">
+          <span class="spec-badge">🚲 {bikeSpec.category}</span>
+          {#if bikeSpec.suspension?.fork}
+            <span class="spec-badge">{bikeSpec.suspension.fork.brand} {bikeSpec.suspension.fork.travelMm}mm</span>
+          {/if}
+          <span class="spec-badge">{bikeSpec.wheelSize}"</span>
+        </div>
+      {/if}
     </header>
 
     <div class="progress-bar">
       <div class="progress-fill" style="width: {((currentModuleIndex + 1) / modules.length) * 100}%"></div>
     </div>
+
+    {#if bikeSpec && bikeSpecificTasks.length > 0}
+      <div class="bike-specific">
+        <h3>🔧 Your {bikeSpec.make} {bikeSpec.model} Service Schedule</h3>
+        <div class="service-intervals">
+          {#each bikeSpecificTasks as task}
+            <div class="interval-item">
+              <span class="interval-hours">{task.hours === 0 ? 'Every ride' : `Every ${task.hours}h`}</span>
+              <span class="interval-component">{task.component}</span>
+              <span class="interval-task">{task.task}</span>
+              <span class="interval-source">{task.source}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     <div class="module-tabs">
       {#each modules as mod, i}
@@ -295,9 +332,26 @@
   }
 
   .subtitle {
-    margin: 4px 0 0;
+    margin: 4px 0 8px;
     color: #666;
     font-size: 0.9rem;
+  }
+
+  .bike-specs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .spec-badge {
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
   }
 
   .progress-bar {
@@ -312,6 +366,62 @@
     height: 100%;
     background: #22c55e;
     transition: width 0.3s ease;
+  }
+
+  .bike-specific {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+
+  .bike-specific h3 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    color: #333;
+  }
+
+  .service-intervals {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .interval-item {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.8rem;
+    padding: 8px;
+    background: #f9fafb;
+    border-radius: 6px;
+  }
+
+  .interval-hours {
+    font-weight: 600;
+    color: #22c55e;
+    white-space: nowrap;
+  }
+
+  .interval-component {
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .interval-task {
+    color: #333;
+  }
+
+  .interval-source {
+    color: #999;
+    font-size: 0.7rem;
+    white-space: nowrap;
   }
 
   .module-tabs {

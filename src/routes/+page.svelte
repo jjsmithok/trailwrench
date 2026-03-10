@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getBikes, saveBike, deleteBike, type Bike } from '$lib/bikes';
+  import { BIKE_DATABASE, getAllMakes, searchBikes, getBikeById, type BikeSpec } from '$lib/bikeDatabase';
 
   let bikes: Bike[] = [];
   let showAddForm = false;
@@ -8,13 +9,43 @@
   let errors = { make: '', model: '' };
   let showDeleteConfirm = false;
   let bikeToDelete: Bike | null = null;
+  
+  // Database picker
+  let searchQuery = '';
+  let searchResults: BikeSpec[] = [];
+  let selectedDbBike: BikeSpec | null = null;
+  let showDbPicker = false;
+  let allMakes: string[] = [];
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: currentYear - 1989 }, (_, i) => currentYear - i);
 
   onMount(() => {
     bikes = getBikes();
+    allMakes = getAllMakes();
   });
+
+  function handleSearch() {
+    if (searchQuery.length >= 2) {
+      searchResults = searchBikes(searchQuery).slice(0, 20);
+    } else {
+      searchResults = [];
+    }
+  }
+
+  function selectDbBike(bike: BikeSpec) {
+    selectedDbBike = bike;
+    newBike.make = bike.make;
+    newBike.model = bike.model;
+    newBike.year = bike.years[bike.years.length - 1]; // Latest year
+    showDbPicker = false;
+    searchQuery = '';
+    searchResults = [];
+  }
+
+  function clearSelection() {
+    selectedDbBike = null;
+  }
 
   function validateForm(): boolean {
     errors = { make: '', model: '' };
@@ -41,13 +72,15 @@
       make: newBike.make.trim(),
       model: newBike.model.trim(),
       lastServiceDate: null,
-      totalServiceHours: 0
+      totalServiceHours: 0,
+      bikeDbId: selectedDbBike?.id || undefined
     });
     
     bikes = [...bikes, bike];
     showAddForm = false;
     newBike = { year: currentYear, make: '', model: '' };
     errors = { make: '', model: '' };
+    selectedDbBike = null;
   }
 
   function confirmDelete(bike: Bike) {
@@ -71,6 +104,19 @@
 
   function startService(bike: Bike) {
     window.location.href = `/service?bike=${bike.id}`;
+  }
+
+  function getCategoryBadge(category: string): string {
+    const badges: Record<string, string> = {
+      'xc': '🏎️ XC',
+      'trail': '🚵 Trail',
+      'all-mountain': '⛰️ All-Mountain',
+      'enduro': '🎢 Enduro',
+      'dh': '💀 DH',
+      'e-mtb': '⚡ E-MTB',
+      'gravel': '🛤️ Gravel'
+    };
+    return badges[category] || category;
   }
 </script>
 
@@ -103,6 +149,48 @@
   {:else if showAddForm}
     <div class="add-form">
       <h2>Add New Bike</h2>
+      
+      <!-- Quick Pick from Database -->
+      <div class="db-picker-section">
+        <button class="btn-db" on:click={() => showDbPicker = !showDbPicker}>
+          🔍 Pick from {BIKE_DATABASE.length}+ known bikes
+        </button>
+        
+        {#if showDbPicker}
+          <div class="db-search">
+            <input 
+              type="text" 
+              placeholder="Search bikes (e.g., 'Stumpjumper', 'Yeti', 'Santa Cruz')..." 
+              bind:value={searchQuery}
+              on:input={handleSearch}
+            />
+            {#if searchResults.length > 0}
+              <div class="search-results">
+                {#each searchResults as bike}
+                  <button class="search-result" on:click={() => selectDbBike(bike)}>
+                    <span class="result-make">{bike.make}</span>
+                    <span class="result-model">{bike.model}</span>
+                    <span class="result-category">{getCategoryBadge(bike.category)}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      {#if selectedDbBike}
+        <div class="selected-bike">
+          <span class="check">✓</span> 
+          <strong>{selectedDbBike.make} {selectedDbBike.model}</strong>
+          <span class="category-badge">{getCategoryBadge(selectedDbBike.category)}</span>
+          <button class="btn-clear" on:click={clearSelection}>Change</button>
+        </div>
+      {/if}
+
+      <!-- Manual Entry -->
+      <div class="form-divider">Or enter manually:</div>
+      
       <div class="form-group">
         <label for="year">Year</label>
         <select id="year" bind:value={newBike.year}>
@@ -138,7 +226,7 @@
         {/if}
       </div>
       <div class="form-actions">
-        <button class="btn-secondary" on:click={() => { showAddForm = false; errors = { make: '', model: '' }; }}>
+        <button class="btn-secondary" on:click={() => { showAddForm = false; errors = { make: '', model: '' }; selectedDbBike = null; }}>
           Cancel
         </button>
         <button class="btn-primary" on:click={addBike}>
@@ -161,7 +249,7 @@
           </div>
           <div class="bike-actions">
             <button class="btn-service" on:click={() => startService(bike)}>Start 50-Hour Service</button>
-            <button class="btn-delete" on:click={() => confirmDelete(bike)} aria-label="Delete bike">🗑</button>
+            <button class="btn-delete" on:click={() => confirmDelete(bike)} aria-label="Delete bike">🗑️</button>
           </div>
         </div>
       {/each}
@@ -225,6 +313,124 @@
 
   .add-form h2 {
     margin: 0 0 20px;
+  }
+
+  .db-picker-section {
+    margin-bottom: 20px;
+  }
+
+  .btn-db {
+    width: 100%;
+    padding: 14px;
+    background: #f0f9ff;
+    border: 2px solid #0ea5e9;
+    border-radius: 8px;
+    color: #0369a1;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-db:hover {
+    background: #e0f2fe;
+  }
+
+  .db-search {
+    margin-top: 12px;
+  }
+
+  .db-search input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+
+  .search-results {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-top: 8px;
+  }
+
+  .search-result {
+    width: 100%;
+    padding: 12px;
+    background: white;
+    border: none;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .search-result:hover {
+    background: #f9fafb;
+  }
+
+  .search-result:last-child {
+    border-bottom: none;
+  }
+
+  .result-make {
+    font-weight: 600;
+  }
+
+  .result-model {
+    flex: 1;
+  }
+
+  .result-category {
+    font-size: 0.75rem;
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .selected-bike {
+    background: #f0fdf4;
+    border: 1px solid #22c55e;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .selected-bike .check {
+    color: #22c55e;
+    font-weight: bold;
+  }
+
+  .category-badge {
+    font-size: 0.75rem;
+    background: #e0f2fe;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .btn-clear {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.85rem;
+  }
+
+  .form-divider {
+    text-align: center;
+    color: #999;
+    margin: 20px 0;
+    font-size: 0.85rem;
   }
 
   .form-group {
