@@ -4,12 +4,9 @@
   import { onMount } from 'svelte';
   import { SERVICE_MODULES, type ServiceModule, type ServiceTask } from '$lib/service';
   import { getBikes, updateBike, deleteBike, getServiceProgress, saveServiceProgress, clearServiceProgress, type Bike } from '$lib/bikes';
-  import { getBikeById, type BikeSpec, type ServiceInterval } from '$lib/bikeDatabase';
 
   let bikeId = '';
   let bike: Bike | null = null;
-  let bikeSpec: BikeSpec | null = null;
-  let bikeSpecificTasks: ServiceInterval[] = [];
   let currentModuleIndex = 0;
   let currentTaskIndex = 0;
   let completedModules: string[] = [];
@@ -17,14 +14,14 @@
   let speechSynthesis: SpeechSynthesis | null = null;
   let isSpeaking = false;
   let showDeleteConfirm = false;
-  let bikeToDelete: string | null = null;
+  let showAllModules = false;
   
   // Local copy of service modules for tracking completion
   let modules: ServiceModule[] = JSON.parse(JSON.stringify(SERVICE_MODULES));
 
   $: currentModule = modules[currentModuleIndex];
   $: currentTask = currentModule?.tasks[currentTaskIndex];
-  $: progress = `${currentModuleIndex + 1}/${modules.length}`;
+  $: overallProgress = Math.round((completedModules.length / modules.length) * 100);
 
   onMount(() => {
     speechSynthesis = window.speechSynthesis;
@@ -35,16 +32,8 @@
     bike = bikes.find(b => b.id === bikeId) || null;
 
     if (!bike) {
-      goto('/trailwrench/');
+      goto('/');
       return;
-    }
-
-    // Load bike-specific data from database if available
-    if (bike.bikeDbId) {
-      bikeSpec = getBikeById(bike.bikeDbId) || null;
-      if (bikeSpec) {
-        bikeSpecificTasks = bikeSpec.serviceIntervals;
-      }
     }
 
     // Load saved progress
@@ -59,7 +48,6 @@
               task.completed = savedTask.completed;
             }
           });
-          // Mark module as completed if all tasks done
           const allDone = modules[modIndex].tasks.every(t => t.completed);
           if (allDone && !completedModules.includes(modules[modIndex].id)) {
             completedModules = [...completedModules, modules[modIndex].id];
@@ -111,7 +99,6 @@
 
   function speakTask(task: ServiceTask) {
     if (!speechSynthesis) return;
-    
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(task.voiceGuidance);
     utterance.rate = 0.9;
@@ -127,14 +114,13 @@
         totalServiceHours: hours,
         lastServiceDate: new Date().toISOString()
       });
-      // Clear progress after finishing service
-      clearServiceProgress(bike.id);
+      clearServiceProgress(bikeId);
     }
     showComplete = true;
   }
 
   function goHome() {
-    goto('/trailwrench/');
+    goto('/');
   }
 
   function goToModule(index: number) {
@@ -146,15 +132,10 @@
     showDeleteConfirm = true;
   }
 
-  function cancelDelete() {
-    showDeleteConfirm = false;
-    bikeToDelete = null;
-  }
-
   function handleDelete() {
     if (bike) {
       deleteBike(bike.id);
-      goto('/trailwrench/');
+      goto('/');
     }
   }
 
@@ -163,17 +144,25 @@
     const completed = mod.tasks.filter(t => t.completed).length;
     return `${completed}/${mod.tasks.length}`;
   };
+
+  $: moduleProgressPercent = (index: number) => {
+    const mod = modules[index];
+    const completed = mod.tasks.filter(t => t.completed).length;
+    return Math.round((completed / mod.tasks.length) * 100);
+  };
 </script>
 
-<div class="container">
+<div class="service-container">
   {#if showDeleteConfirm}
-    <div class="modal-overlay">
+    <div class="modal-overlay" on:click|self={() => showDeleteConfirm = false}>
       <div class="modal">
-        <h2>Delete Bike?</h2>
-        <p>Are you sure you want to delete this bike? This cannot be undone.</p>
+        <div class="modal-header">
+          <h3 class="modal-title">Delete Bike?</h3>
+        </div>
+        <p class="text-muted">Are you sure you want to delete this bike? This cannot be undone.</p>
         <div class="modal-actions">
-          <button class="btn-secondary" on:click={cancelDelete}>Cancel</button>
-          <button class="btn-danger" on:click={handleDelete}>Delete</button>
+          <button class="btn btn-secondary" on:click={() => showDeleteConfirm = false}>Cancel</button>
+          <button class="btn btn-danger" on:click={handleDelete}>Delete</button>
         </div>
       </div>
     </div>
@@ -186,7 +175,7 @@
       <p class="congrats">Great job giving your bike some love.</p>
       
       {#if bike}
-        <div class="stats">
+        <div class="stats-card">
           <div class="stat">
             <span class="stat-value">{bike.totalServiceHours + 50}</span>
             <span class="stat-label">Total Service Hours</span>
@@ -194,59 +183,39 @@
         </div>
       {/if}
       
-      <button class="btn-home" on:click={goHome}>Back to Home</button>
+      <button class="btn btn-primary btn-full" on:click={goHome}>Back to Home</button>
     </div>
   {:else if bike}
-    <header>
-      <button class="back-btn" on:click={goHome}>← Back</button>
+    <header class="service-header">
+      <div class="header-top">
+        <button class="back-btn" on:click={goHome}>← Back</button>
+        <button class="icon-btn" on:click={confirmDelete}>🗑️</button>
+      </div>
       <h1>{bike.year} {bike.make} {bike.model}</h1>
-      <p class="subtitle">50-Hour Service</p>
+      <p class="subtitle">50-Hour Service Wizard</p>
       
-      {#if bikeSpec}
-        <div class="bike-specs">
-          <span class="spec-badge">🚲 {bikeSpec.category}</span>
-          {#if bikeSpec.suspension?.fork}
-            <span class="spec-badge">{bikeSpec.suspension.fork.brand} {bikeSpec.suspension.fork.travelMm}mm</span>
-          {/if}
-          <span class="spec-badge">{bikeSpec.wheelSize}"</span>
+      <div class="progress-info">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: {overallProgress}%"></div>
         </div>
-      {/if}
+        <span class="progress-text">{overallProgress}% Complete</span>
+      </div>
     </header>
 
-    <div class="progress-bar">
-      <div class="progress-fill" style="width: {((currentModuleIndex + 1) / modules.length) * 100}%"></div>
-    </div>
-
-    {#if bikeSpec && bikeSpecificTasks.length > 0}
-      <div class="bike-specific">
-        <h3>🔧 Your {bikeSpec.make} {bikeSpec.model} Service Schedule</h3>
-        <div class="service-intervals">
-          {#each bikeSpecificTasks as task}
-            <div class="interval-item">
-              <span class="interval-hours">{task.hours === 0 ? 'Every ride' : `Every ${task.hours}h`}</span>
-              <span class="interval-component">{task.component}</span>
-              <span class="interval-task">{task.task}</span>
-              <span class="interval-source">{task.source}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <div class="module-tabs">
+    <nav class="module-nav">
       {#each modules as mod, i}
         <button 
-          class="module-tab" 
+          class="module-nav-item" 
           class:active={i === currentModuleIndex}
           class:completed={completedModules.includes(mod.id)}
           on:click={() => goToModule(i)}
         >
-          <span class="tab-icon">{mod.icon}</span>
-          <span class="tab-name">{mod.name}</span>
-          <span class="tab-progress">{moduleProgress(i)}</span>
+          <span class="module-icon">{mod.icon}</span>
+          <span class="module-name">{mod.name}</span>
+          <span class="module-check">{moduleProgress(i)}</span>
         </button>
       {/each}
-    </div>
+    </nav>
 
     {#if currentModule && currentTask}
       <div class="task-card">
@@ -255,15 +224,15 @@
           <span class="task-counter">{currentTaskIndex + 1}/{currentModule.tasks.length}</span>
         </div>
 
-        <h2>{currentTask.title}</h2>
+        <h2 class="task-title">{currentTask.title}</h2>
         <p class="task-desc">{currentTask.description}</p>
 
         <button 
-          class="voice-btn" 
+          class="btn btn-secondary btn-small" 
           class:speaking={isSpeaking}
           on:click={() => speakTask(currentTask)}
         >
-          {isSpeaking ? '🔊 Playing...' : '🔈 Listen'}
+          {isSpeaking ? '🔊 Playing...' : '🔈 Listen to Instructions'}
         </button>
 
         <label class="checkbox-label">
@@ -272,20 +241,20 @@
             checked={currentTask.completed}
             on:change={() => toggleTask(currentTask)}
           />
-          <span>Task Completed</span>
+          <span>Mark as Completed</span>
         </label>
       </div>
 
-      <div class="nav-buttons">
+      <div class="task-nav">
         <button 
-          class="btn-nav btn-prev" 
+          class="btn btn-secondary" 
           on:click={prevTask}
           disabled={currentModuleIndex === 0 && currentTaskIndex === 0}
         >
           ← Previous
         </button>
-        <button class="btn-nav btn-next" on:click={nextTask}>
-          {currentModuleIndex === modules.length - 1 && currentTaskIndex === currentModule.tasks.length - 1 ? 'Finish' : 'Next →'}
+        <button class="btn btn-primary" on:click={nextTask}>
+          {currentModuleIndex === modules.length - 1 && currentTaskIndex === currentModule.tasks.length - 1 ? 'Finish Service' : 'Next →'}
         </button>
       </div>
     {/if}
@@ -293,418 +262,297 @@
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f5f5f5;
-    color: #333;
-  }
-
-  .container {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 16px;
+  .service-container {
+    min-height: 100vh;
+    background: var(--color-bg);
     padding-bottom: 100px;
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 16px;
-    position: relative;
-  }
-
-  .back-btn {
-    position: absolute;
-    left: 0;
+  .service-header {
+    background: linear-gradient(135deg, var(--color-bg-secondary) 0%, var(--color-bg-tertiary) 100%);
+    padding: 20px 16px;
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
     top: 0;
-    background: none;
-    border: none;
-    color: #3b82f6;
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 8px;
+    z-index: 50;
   }
 
-  header h1 {
-    margin: 0;
-    font-size: 1.3rem;
-  }
-
-  .subtitle {
-    margin: 4px 0 8px;
-    color: #666;
-    font-size: 0.9rem;
-  }
-
-  .bike-specs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-top: 4px;
-  }
-
-  .spec-badge {
-    background: #e0f2fe;
-    color: #0369a1;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-
-  .progress-bar {
-    height: 4px;
-    background: #e5e5e5;
-    border-radius: 2px;
-    margin-bottom: 16px;
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: #22c55e;
-    transition: width 0.3s ease;
-  }
-
-  .bike-specific {
-    background: white;
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
-
-  .bike-specific h3 {
-    margin: 0 0 12px;
-    font-size: 0.95rem;
-    color: #333;
-  }
-
-  .service-intervals {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .interval-item {
-    display: grid;
-    grid-template-columns: auto auto 1fr auto;
-    gap: 8px;
-    align-items: center;
-    font-size: 0.8rem;
-    padding: 8px;
-    background: #f9fafb;
-    border-radius: 6px;
-  }
-
-  .interval-hours {
-    font-weight: 600;
-    color: #22c55e;
-    white-space: nowrap;
-  }
-
-  .interval-component {
-    background: #e0f2fe;
-    color: #0369a1;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-
-  .interval-task {
-    color: #333;
-  }
-
-  .interval-source {
-    color: #999;
-    font-size: 0.7rem;
-    white-space: nowrap;
-  }
-
-  .module-tabs {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    margin-bottom: 16px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .module-tab {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 10px 12px;
-    background: white;
-    border: 2px solid #e5e5e5;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    min-width: 60px;
-  }
-
-  .module-tab.active {
-    border-color: #3b82f6;
-    background: #eff6ff;
-  }
-
-  .module-tab.completed {
-    border-color: #22c55e;
-  }
-
-  .tab-icon {
-    font-size: 1.2rem;
-  }
-
-  .tab-name {
-    font-size: 0.7rem;
-    font-weight: 600;
-    margin-top: 2px;
-  }
-
-  .tab-progress {
-    font-size: 0.65rem;
-    color: #666;
-  }
-
-  .task-card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 16px;
-  }
-
-  .task-header {
+  .header-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
   }
 
+  .back-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px;
+    margin: -8px;
+  }
+
+  .icon-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 8px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+
+  .icon-btn:hover {
+    opacity: 1;
+  }
+
+  .service-header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .subtitle {
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    margin: 4px 0 16px;
+  }
+
+  .progress-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .progress-info .progress-bar {
+    flex: 1;
+  }
+
+  .progress-text {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  .module-nav {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .module-nav-item {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 70px;
+  }
+
+  .module-nav-item:hover {
+    border-color: var(--color-primary);
+  }
+
+  .module-nav-item.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  .module-nav-item.active .module-name,
+  .module-nav-item.active .module-check {
+    color: #000;
+  }
+
+  .module-nav-item.completed {
+    border-color: var(--color-success);
+  }
+
+  .module-nav-item.completed .module-check {
+    color: var(--color-success);
+  }
+
+  .module-icon {
+    font-size: 18px;
+  }
+
+  .module-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-align: center;
+  }
+
+  .module-check {
+    font-size: 10px;
+    color: var(--color-text-muted);
+  }
+
+  .task-card {
+    margin: 20px 16px;
+    padding: 24px;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+  }
+
+  .task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
   .module-badge {
-    background: #f3f4f6;
-    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--color-primary);
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 13px;
     font-weight: 600;
   }
 
   .task-counter {
-    color: #666;
-    font-size: 0.85rem;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
   }
 
-  .task-card h2 {
+  .task-title {
+    font-size: 24px;
+    font-weight: 700;
     margin: 0 0 12px;
-    font-size: 1.2rem;
+    line-height: 1.3;
   }
 
   .task-desc {
-    margin: 0 0 16px;
-    line-height: 1.5;
-    color: #444;
-  }
-
-  .voice-btn {
-    width: 100%;
-    padding: 14px;
-    background: #f0f9ff;
-    border: 2px solid #3b82f6;
-    border-radius: 10px;
-    color: #3b82f6;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin-bottom: 16px;
-    transition: all 0.2s;
-  }
-
-  .voice-btn:hover, .voice-btn.speaking {
-    background: #3b82f6;
-    color: white;
+    color: var(--color-text-secondary);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0 0 20px;
   }
 
   .checkbox-label {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
     cursor: pointer;
-    padding: 12px;
-    background: #f9fafb;
-    border-radius: 8px;
+    transition: background 0.2s;
+  }
+
+  .checkbox-label:hover {
+    background: var(--color-bg-secondary);
   }
 
   .checkbox-label input {
-    width: 20px;
-    height: 20px;
-    accent-color: #22c55e;
+    width: 22px;
+    height: 22px;
+    accent-color: var(--color-success);
   }
 
   .checkbox-label span {
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
   }
 
-  .nav-buttons {
+  .task-nav {
     display: flex;
     gap: 12px;
+    padding: 0 16px;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     padding: 16px;
-    background: white;
-    border-top: 1px solid #e5e5e5;
-    max-width: 600px;
-    margin: 0 auto;
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
   }
 
-  .btn-nav {
+  .task-nav .btn {
     flex: 1;
-    padding: 14px;
-    border: none;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
   }
 
-  .btn-prev {
-    background: #e5e5e5;
-    color: #333;
-  }
-
-  .btn-prev:disabled {
+  .task-nav .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  .btn-next {
-    background: #22c55e;
-    color: white;
-  }
-
-  .btn-next:hover {
-    background: #16a34a;
-  }
-
-  /* Complete screen */
   .complete-screen {
-    text-align: center;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     padding: 40px 20px;
+    text-align: center;
   }
 
   .complete-icon {
-    font-size: 4rem;
-    margin-bottom: 16px;
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: bounce 0.5s ease;
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
   }
 
   .complete-screen h1 {
+    font-size: 32px;
+    font-weight: 700;
     margin: 0 0 8px;
-    color: #22c55e;
   }
 
   .congrats {
-    color: #666;
-    margin-bottom: 30px;
+    color: var(--color-text-secondary);
+    font-size: 18px;
+    margin: 0 0 32px;
   }
 
-  .stats {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 30px;
+  .stats-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    padding: 24px 40px;
+    margin-bottom: 32px;
+    border: 1px solid var(--color-border);
   }
 
   .stat {
     display: flex;
     flex-direction: column;
+    align-items: center;
   }
 
   .stat-value {
-    font-size: 2.5rem;
+    font-size: 48px;
     font-weight: 700;
-    color: #22c55e;
+    color: var(--color-primary);
   }
 
   .stat-label {
-    color: #666;
-    font-size: 0.9rem;
-  }
-
-  .btn-home {
-    padding: 14px 30px;
-    background: #3b82f6;
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .btn-home:hover {
-    background: #2563eb;
-  }
-
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 20px;
-  }
-
-  .modal {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    max-width: 400px;
-    width: 100%;
-    text-align: center;
-  }
-
-  .modal h2 {
-    margin: 0 0 12px;
-  }
-
-  .modal p {
-    color: #666;
-    margin-bottom: 20px;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-
-  .btn-secondary {
-    padding: 12px 20px;
-    background: #e5e5e5;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  .btn-danger {
-    padding: 12px 20px;
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 </style>

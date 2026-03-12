@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getBikes, saveBike, deleteBike, updateBike, getAllProgress, type Bike } from '$lib/bikes';
-  import { BIKE_DATABASE, getAllMakes, searchBikes, getBikeById, type BikeSpec } from '$lib/bikeDatabase';
+  import { getBikes, saveBike, deleteBike, updateBike, type Bike } from '$lib/bikes';
 
   let bikes: Bike[] = [];
   let showAddForm = false;
@@ -14,43 +13,13 @@
   // Edit mode
   let editingBike: Bike | null = null;
   let editForm = { year: 0, make: '', model: '' };
-  
-  // Database picker
-  let searchQuery = '';
-  let searchResults: BikeSpec[] = [];
-  let selectedDbBike: BikeSpec | null = null;
-  let showDbPicker = false;
-  let allMakes: string[] = [];
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: currentYear - 1989 }, (_, i) => currentYear - i);
 
   onMount(() => {
     bikes = getBikes();
-    allMakes = getAllMakes();
   });
-
-  function handleSearch() {
-    if (searchQuery.length >= 2) {
-      searchResults = searchBikes(searchQuery).slice(0, 20);
-    } else {
-      searchResults = [];
-    }
-  }
-
-  function selectDbBike(bike: BikeSpec) {
-    selectedDbBike = bike;
-    newBike.make = bike.make;
-    newBike.model = bike.model;
-    newBike.year = bike.years[bike.years.length - 1]; // Latest year
-    showDbPicker = false;
-    searchQuery = '';
-    searchResults = [];
-  }
-
-  function clearSelection() {
-    selectedDbBike = null;
-  }
 
   function validateForm(): boolean {
     errors = { make: '', model: '' };
@@ -77,18 +46,15 @@
       make: newBike.make.trim(),
       model: newBike.model.trim(),
       lastServiceDate: null,
-      totalServiceHours: 0,
-      bikeDbId: selectedDbBike?.id || undefined
+      totalServiceHours: 0
     });
     
     bikes = [...bikes, bike];
     showAddForm = false;
     newBike = { year: currentYear, make: '', model: '' };
     errors = { make: '', model: '' };
-    selectedDbBike = null;
   }
 
-  // Edit functions
   function startEdit(bike: Bike) {
     editingBike = bike;
     editForm = { year: bike.year, make: bike.make, model: bike.model };
@@ -100,59 +66,17 @@
   }
 
   function saveEdit() {
-    if (!editingBike || !editForm.make.trim() || !editForm.model.trim()) return;
+    if (!editingBike) return;
     
-    const updated = updateBike(editingBike.id, {
+    updateBike(editingBike.id, {
       year: editForm.year,
       make: editForm.make.trim(),
       model: editForm.model.trim()
     });
     
-    if (updated) {
-      bikes = bikes.map(b => b.id === editingBike!.id ? updated : b);
-    }
+    bikes = getBikes();
     editingBike = null;
-  }
-
-  // Export/Import functions
-  function exportData() {
-    const data = {
-      bikes: getBikes(),
-      progress: getAllProgress(),
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `trailwrench-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function importData(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        if (data.bikes && Array.isArray(data.bikes)) {
-          localStorage.setItem('trailwrench_bikes', JSON.stringify(data.bikes));
-          bikes = getBikes();
-        }
-        if (data.progress && Array.isArray(data.progress)) {
-          localStorage.setItem('trailwrench_progress', JSON.stringify(data.progress));
-        }
-        alert('Data imported successfully!');
-      } catch (err) {
-        alert('Failed to import data. Invalid file format.');
-      }
-    };
-    reader.readAsText(file);
-    input.value = '';
+    editForm = { year: 0, make: '', model: '' };
   }
 
   function confirmDelete(bike: Bike) {
@@ -160,634 +84,174 @@
     showDeleteConfirm = true;
   }
 
-  function cancelDelete() {
-    showDeleteConfirm = false;
-    bikeToDelete = null;
-  }
-
   function handleDelete() {
-    if (bikeToDelete) {
-      deleteBike(bikeToDelete.id);
-      bikes = bikes.filter(b => b.id !== bikeToDelete!.id);
-    }
+    if (!bikeToDelete) return;
+    deleteBike(bikeToDelete.id);
+    bikes = getBikes();
     showDeleteConfirm = false;
     bikeToDelete = null;
   }
 
-  function startService(bike: Bike) {
-    goto('/trailwrench/service?bike=' + bike.id);
+  function getServiceStatus(bike: Bike): 'ok' | 'due' | 'overdue' {
+    if (!bike.lastServiceDate) return 'due';
+    
+    const lastService = new Date(bike.lastServiceDate);
+    const monthsSinceService = (Date.now() - lastService.getTime()) / (1000 * 60 * 60 * 24 * 30);
+    
+    if (monthsSinceService < 2) return 'ok';
+    if (monthsSinceService < 4) return 'due';
+    return 'overdue';
   }
 
-  function getCategoryBadge(category: string): string {
-    const badges: Record<string, string> = {
-      'xc': '🏎️ XC',
-      'trail': '🚵 Trail',
-      'all-mountain': '⛰️ All-Mountain',
-      'enduro': '🎢 Enduro',
-      'dh': '💀 DH',
-      'e-mtb': '⚡ E-MTB',
-      'gravel': '🛤️ Gravel'
-    };
-    return badges[category] || category;
+  function getServiceStatusText(status: 'ok' | 'due' | 'overdue'): string {
+    switch (status) {
+      case 'ok': return 'Good';
+      case 'due': return 'Due Soon';
+      case 'overdue': return 'Overdue';
+    }
+  }
+
+  function goToService(bikeId: string) {
+    goto(`/service?bike=${bikeId}`);
   }
 </script>
 
-<div class="container">
-  {#if showDeleteConfirm}
-    <div class="modal-overlay">
-      <div class="modal">
-        <h2>Delete Bike?</h2>
-        <p>Are you sure you want to delete your {bikeToDelete?.year} {bikeToDelete?.make} {bikeToDelete?.model}? This cannot be undone.</p>
-        <div class="modal-actions">
-          <button class="btn-secondary" on:click={cancelDelete}>Cancel</button>
-          <button class="btn-danger" on:click={handleDelete}>Delete</button>
-        </div>
-      </div>
-    </div>
-  {/if}
+<header class="header">
+  <h1>🔧 Trail<span>Wrench</span></h1>
+  <p class="subtitle">Mountain Bike Service Tracker</p>
+</header>
 
-  <header>
-    <h1>🚵 TrailWrench AI</h1>
-    <p>MTB Maintenance Tracker</p>
-    {#if bikes.length > 0}
-      <div class="header-actions">
-        <button class="btn-header" on:click={exportData}>📤 Export</button>
-        <label class="btn-header btn-import">
-          📥 Import
-          <input type="file" accept=".json" on:change={importData} hidden />
-        </label>
-      </div>
-    {/if}
-  </header>
+<nav class="nav">
+  <button class="nav-item active">🚲 My Bikes</button>
+  <button class="nav-item">📅 History</button>
+  <button class="nav-item">⚙️ Settings</button>
+</nav>
 
+<main class="content">
   {#if bikes.length === 0 && !showAddForm}
     <div class="empty-state">
-      <p>No bikes yet. Add your first bike to get started!</p>
-      <button class="btn-primary" on:click={() => showAddForm = true}>
-        + Add Your Bike
+      <div class="empty-state-icon">🚲</div>
+      <h3>No Bikes Yet</h3>
+      <p>Add your first bike to start tracking service intervals</p>
+      <button class="btn btn-primary" on:click={() => showAddForm = true}>
+        + Add Your First Bike
       </button>
     </div>
-  {:else if showAddForm}
-    <div class="add-form">
-      <h2>Add New Bike</h2>
-      
-      <!-- Quick Pick from Database -->
-      <div class="db-picker-section">
-        <button class="btn-db" on:click={() => showDbPicker = !showDbPicker}>
-          🔍 Pick from {BIKE_DATABASE.length}+ known bikes
-        </button>
-        
-        {#if showDbPicker}
-          <div class="db-search">
-            <input 
-              type="text" 
-              placeholder="Search bikes (e.g., 'Stumpjumper', 'Yeti', 'Santa Cruz')..." 
-              bind:value={searchQuery}
-              on:input={handleSearch}
-            />
-            {#if searchResults.length > 0}
-              <div class="search-results">
-                {#each searchResults as bike}
-                  <button class="search-result" on:click={() => selectDbBike(bike)}>
-                    <span class="result-make">{bike.make}</span>
-                    <span class="result-model">{bike.model}</span>
-                    <span class="result-category">{getCategoryBadge(bike.category)}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-
-      {#if selectedDbBike}
-        <div class="selected-bike">
-          <span class="check">✓</span> 
-          <strong>{selectedDbBike.make} {selectedDbBike.model}</strong>
-          <span class="category-badge">{getCategoryBadge(selectedDbBike.category)}</span>
-          <button class="btn-clear" on:click={clearSelection}>Change</button>
-        </div>
-      {/if}
-
-      <!-- Manual Entry -->
-      <div class="form-divider">Or enter manually:</div>
-      
-      <div class="form-group">
-        <label for="year">Year</label>
-        <select id="year" bind:value={newBike.year}>
-          {#each years as year}
-            <option value={year}>{year}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="make">Make *</label>
-        <input 
-          id="make" 
-          type="text" 
-          placeholder="Santa Cruz, Trek, Yeti..." 
-          bind:value={newBike.make}
-          class:error={errors.make}
-        />
-        {#if errors.make}
-          <span class="error-text">{errors.make}</span>
-        {/if}
-      </div>
-      <div class="form-group">
-        <label for="model">Model *</label>
-        <input 
-          id="model" 
-          type="text" 
-          placeholder="Tallboy, Fuel EX, SB130..." 
-          bind:value={newBike.model}
-          class:error={errors.model}
-        />
-        {#if errors.model}
-          <span class="error-text">{errors.model}</span>
-        {/if}
-      </div>
-      <div class="form-actions">
-        <button class="btn-secondary" on:click={() => { showAddForm = false; errors = { make: '', model: '' }; selectedDbBike = null; }}>
-          Cancel
-        </button>
-        <button class="btn-primary" on:click={addBike}>
-          Save Bike
-        </button>
-      </div>
+  {:else}
+    <div class="flex justify-between items-center mb-4">
+      <h2 style="margin: 0; font-size: 20px;">Your Bikes ({bikes.length})</h2>
+      <button class="btn btn-primary btn-small" on:click={() => showAddForm = true}>
+        + Add Bike
+      </button>
     </div>
-  {/if}
 
-  {#if bikes.length > 0}
-    <section class="bike-list">
-      <h2>Your Bikes</h2>
-      {#each bikes as bike (bike.id)}
+    <div class="bike-list">
+      {#each bikes as bike}
         {#if editingBike?.id === bike.id}
-          <div class="bike-card edit-card">
-            <div class="edit-form">
-              <div class="form-group">
-                <label>Year</label>
-                <select bind:value={editForm.year}>
-                  {#each years as year}
-                    <option value={year}>{year}</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Make</label>
-                <input type="text" bind:value={editForm.make} />
-              </div>
-              <div class="form-group">
-                <label>Model</label>
-                <input type="text" bind:value={editForm.model} />
-              </div>
-              <div class="edit-actions">
-                <button class="btn-secondary" on:click={cancelEdit}>Cancel</button>
-                <button class="btn-primary" on:click={saveEdit}>Save</button>
-              </div>
+          <div class="card">
+            <div class="form-group">
+              <label class="form-label">Year</label>
+              <select class="form-select" bind:value={editForm.year}>
+                {#each years as year}
+                  <option value={year}>{year}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Make</label>
+              <input class="form-input" type="text" bind:value={editForm.make} placeholder="Santa Cruz, Trek, Specialized..." />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Model</label>
+              <input class="form-input" type="text" bind:value={editForm.model} placeholder="Tallboy, Bronson, Ripmo..." />
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-secondary" on:click={cancelEdit}>Cancel</button>
+              <button class="btn btn-primary" on:click={saveEdit}>Save</button>
             </div>
           </div>
         {:else}
-          <div class="bike-card">
+          <div class="bike-item" on:click={() => goToService(bike.id)}>
+            <div class="bike-icon">🚲</div>
             <div class="bike-info">
-              <h3>{bike.year} {bike.make} {bike.model}</h3>
-              <p class="hours">
-                {bike.totalServiceHours} service hours
-              </p>
+              <div class="bike-name">{bike.year} {bike.make} {bike.model}</div>
+              <div class="bike-meta">
+                {bike.totalServiceHours || 0} service hours
+              </div>
             </div>
-            <div class="bike-actions">
-              <button class="btn-service" on:click={() => startService(bike)}>Start 50-Hour Service</button>
-              <button class="btn-edit" on:click={() => startEdit(bike)} aria-label="Edit bike">✏️</button>
-              <button class="btn-delete" on:click={() => confirmDelete(bike)} aria-label="Delete bike">🗑️</button>
-            </div>
+            <span class="bike-status {getServiceStatus(bike)}">
+              {getServiceStatusText(getServiceStatus(bike))}
+            </span>
           </div>
         {/if}
       {/each}
-      {#if !showAddForm}
-        <button class="btn-add" on:click={() => showAddForm = true}>
-          + Add Another Bike
-        </button>
-      {/if}
-    </section>
+    </div>
   {/if}
-</div>
 
-<style>
-  :global(body) {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f5f5f5;
-    color: #333;
-  }
-
-  .container {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-
-  header {
-    text-align: center;
-    margin-bottom: 30px;
-  }
-
-  header h1 {
-    margin: 0;
-    font-size: 1.8rem;
-  }
-
-  header p {
-    margin: 5px 0 0;
-    color: #666;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    margin-top: 12px;
-  }
-
-  .btn-header {
-    padding: 8px 14px;
-    background: #e5e5e5;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    color: #333;
-  }
-
-  .btn-header:hover {
-    background: #d4d4d4;
-  }
-
-  .btn-import {
-    display: inline-block;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
-
-  .empty-state p {
-    margin-bottom: 20px;
-    color: #666;
-  }
-
-  .add-form {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
-
-  .add-form h2 {
-    margin: 0 0 20px;
-  }
-
-  .db-picker-section {
-    margin-bottom: 20px;
-  }
-
-  .btn-db {
-    width: 100%;
-    padding: 14px;
-    background: #f0f9ff;
-    border: 2px solid #0ea5e9;
-    border-radius: 8px;
-    color: #0369a1;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-db:hover {
-    background: #e0f2fe;
-  }
-
-  .db-search {
-    margin-top: 12px;
-  }
-
-  .db-search input {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 1rem;
-    box-sizing: border-box;
-  }
-
-  .search-results {
-    max-height: 250px;
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    margin-top: 8px;
-  }
-
-  .search-result {
-    width: 100%;
-    padding: 12px;
-    background: white;
-    border: none;
-    border-bottom: 1px solid #eee;
-    text-align: left;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .search-result:hover {
-    background: #f9fafb;
-  }
-
-  .search-result:last-child {
-    border-bottom: none;
-  }
-
-  .result-make {
-    font-weight: 600;
-  }
-
-  .result-model {
-    flex: 1;
-  }
-
-  .result-category {
-    font-size: 0.75rem;
-    background: #f3f4f6;
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
-
-  .selected-bike {
-    background: #f0fdf4;
-    border: 1px solid #22c55e;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .selected-bike .check {
-    color: #22c55e;
-    font-weight: bold;
-  }
-
-  .category-badge {
-    font-size: 0.75rem;
-    background: #e0f2fe;
-    padding: 2px 8px;
-    border-radius: 4px;
-  }
-
-  .btn-clear {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: #666;
-    cursor: pointer;
-    text-decoration: underline;
-    font-size: 0.85rem;
-  }
-
-  .form-divider {
-    text-align: center;
-    color: #999;
-    margin: 20px 0;
-    font-size: 0.85rem;
-  }
-
-  .form-group {
-    margin-bottom: 16px;
-  }
-
-  .form-group label {
-    display: block;
-    margin-bottom: 6px;
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-
-  .form-group input,
-  .form-group select {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    font-size: 1rem;
-    box-sizing: border-box;
-  }
-
-  .form-group input.error {
-    border-color: #dc2626;
-  }
-
-  .error-text {
-    color: #dc2626;
-    font-size: 0.85rem;
-    margin-top: 4px;
-    display: block;
-  }
-
-  .form-actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 20px;
-  }
-
-  button {
-    padding: 12px 20px;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .btn-primary {
-    background: #22c55e;
-    color: white;
-    flex: 1;
-  }
-
-  .btn-primary:hover {
-    background: #16a34a;
-  }
-
-  .btn-secondary {
-    background: #e5e5e5;
-    color: #333;
-  }
-
-  .btn-secondary:hover {
-    background: #d4d4d4;
-  }
-
-  .bike-list {
-    margin-top: 30px;
-  }
-
-  .bike-list h2 {
-    margin-bottom: 16px;
-  }
-
-  .bike-card {
-    background: white;
-    padding: 16px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin-bottom: 12px;
-  }
-
-  .bike-info h3 {
-    margin: 0 0 4px;
-    font-size: 1.1rem;
-  }
-
-  .bike-info .hours {
-    margin: 0;
-    color: #666;
-    font-size: 0.9rem;
-  }
-
-  .bike-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .btn-service {
-    background: #3b82f6;
-    color: white;
-    flex: 1;
-    text-align: center;
-  }
-
-  .btn-service:hover {
-    background: #2563eb;
-  }
-
-  .btn-delete {
-    background: #fee2e2;
-    color: #dc2626;
-    padding: 12px 16px;
-  }
-
-  .btn-delete:hover {
-    background: #fecaca;
-  }
-
-  .btn-edit {
-    background: #fef3c7;
-    color: #d97706;
-    padding: 12px 14px;
-  }
-
-  .btn-edit:hover {
-    background: #fde68a;
-  }
-
-  .edit-card {
-    background: #fffbeb;
-    border: 2px solid #f59e0b;
-  }
-
-  .edit-form {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .edit-form .form-group {
-    margin-bottom: 0;
-  }
-
-  .edit-form input,
-  .edit-form select {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 1rem;
-    box-sizing: border-box;
-  }
-
-  .edit-actions {
-    display: flex;
-    gap: 10px;
-  }
-
-  .edit-actions button {
-    flex: 1;
-  }
-
-  .btn-add {
-    width: 100%;
-    background: white;
-    border: 2px dashed #ccc;
-    color: #666;
-  }
-
-  .btn-add:hover {
-    border-color: #22c55e;
-    color: #22c55e;
-  }
-
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 20px;
-  }
-
-  .modal {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    max-width: 400px;
-    width: 100%;
-    text-align: center;
-  }
-
-  .modal h2 {
-    margin: 0 0 12px;
-  }
-
-  .modal p {
-    color: #666;
-    margin-bottom: 20px;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-
-  .btn-danger {
-    padding: 12px 20px;
-    background: #dc2626;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-</style>
+  {#if showAddForm}
+    <div class="modal-overlay" on:click|self={() => showAddForm = false}>
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Add New Bike</h3>
+          <button class="modal-close" on:click={() => showAddForm = false}>&times;</button>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Year</label>
+          <select class="form-select" bind:value={newBike.year}>
+            {#each years as year}
+              <option value={year}>{year}</option>
+            {/each}
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Make</label>
+          <input 
+            class="form-input" 
+            type="text" 
+            bind:value={newBike.make} 
+            placeholder="Santa Cruz, Trek, Specialized..."
+          />
+          {#if errors.make}
+            <p class="text-danger" style="color: var(--color-danger); font-size: 13px; margin-top: 4px;">{errors.make}</p>
+          {/if}
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Model</label>
+          <input 
+            class="form-input" 
+            type="text" 
+            bind:value={newBike.model} 
+            placeholder="Tallboy, Bronson, Ripmo..."
+          />
+          {#if errors.model}
+            <p class="text-danger" style="color: var(--color-danger); font-size: 13px; margin-top: 4px;">{errors.model}</p>
+          {/if}
+        </div>
+        
+        <div class="modal-actions">
+          <button class="btn btn-secondary" on:click={() => showAddForm = false}>Cancel</button>
+          <button class="btn btn-primary" on:click={addBike}>Add Bike</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showDeleteConfirm}
+    <div class="modal-overlay" on:click|self={() => showDeleteConfirm = false}>
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Delete Bike?</h3>
+          <button class="modal-close" on:click={() => showDeleteConfirm = false}>&times;</button>
+        </div>
+        <p>Are you sure you want to delete {bikeToDelete?.year} {bikeToDelete?.make} {bikeToDelete?.model}? This cannot be undone.</p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" on:click={() => showDeleteConfirm = false}>Cancel</button>
+          <button class="btn btn-danger" on:click={handleDelete}>Delete</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+</main>

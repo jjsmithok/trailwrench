@@ -383,11 +383,12 @@ function _page($$renderer, $$props) {
     let currentModule;
     let currentModuleIndex = 0;
     let currentTaskIndex = 0;
+    let completedModules = [];
     let modules = JSON.parse(JSON.stringify(SERVICE_MODULES));
     currentModule = modules[currentModuleIndex];
     currentModule?.tasks[currentTaskIndex];
-    `${currentModuleIndex + 1}/${modules.length}`;
-    $$renderer2.push(`<div class="container svelte-1pp1tss">`);
+    Math.round(completedModules.length / modules.length * 100);
+    $$renderer2.push(`<div class="service-container svelte-1pp1tss">`);
     {
       $$renderer2.push("<!--[-1-->");
     }

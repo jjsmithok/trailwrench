@@ -4,11 +4,11 @@ import adapter from '@sveltejs/adapter-static';
 const config = {
 	kit: {
 		paths: {
-			base: '/trailwrench'
+			base: ''
 		},
 		adapter: adapter({
-			pages: 'build',
-			assets: 'build',
+			pages: 'docs',
+			assets: 'docs',
 			fallback: '200.html',
 			precompress: false,
 			strict: false
